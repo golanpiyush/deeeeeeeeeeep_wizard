@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<!-- DepthWizard frontend — single file, minimal black premium aesthetic -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DepthWizard — 3D Point Cloud</title>
+  <style>
+    /* Minimal black premium styling with refined animations and typography */
+    :root {
+      --bg: #030303;
+      --panel-bg: rgba(10, 10, 10, 0.75);
+      --panel-border: rgba(255, 255, 255, 0.08);
+      --text-primary: #f5f5f7;
+      --text-secondary: #98989d;
+      --accent: #c7a86b; /* refined gold for premium feel */
+      --accent-hover: #d9bc7a;
+      --error: #ff5a5a;
+      --success: #5ad08c;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: var(--bg);
+      font-family: 'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      color: var(--text-primary);
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      letter-spacing: -0.01em;
+    }
+
+    /* Smooth fade-in for UI panel */
+    @keyframes panelFade {
+      0% { opacity: 0; transform: translateY(8px); }
+      100% { opacity: 1; transform: translateY(0); }
+    }
+
+    #ui-panel {
+      position: absolute;
+      top: 24px;
+      left: 24px;
+      z-index: 20;
+      background: var(--panel-bg);
+      backdrop-filter: blur(24px) saturate(180%);
+      -webkit-backdrop-filter: blur(24px) saturate(180%);
+      padding: 28px 28px 24px;
+      border-radius: 24px;
+      max-width: 340px;
+      border: 1px solid var(--panel-border);
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6), 0 0 0 0.5px rgba(255, 255, 255, 0.03) inset;
+      animation: panelFade 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+      transition: box-shadow 0.4s ease, border-color 0.3s;
+    }
+
+    #ui-panel:hover {
+      border-color: rgba(255, 255, 255, 0.15);
+      box-shadow: 0 24px 48px rgba(0, 0, 0, 0.8), 0 0 0 0.5px rgba(255, 255, 255, 0.06) inset;
+    }
+
+    #ui-panel h1 {
+      font-size: 1.5rem;
+      font-weight: 400;
+      margin-bottom: 6px;
+      letter-spacing: -0.02em;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    #ui-panel h1::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: linear-gradient(90deg, rgba(255,255,255,0.15), transparent);
+      margin-left: 12px;
+    }
+
+    #ui-panel p {
+      font-size: 0.78rem;
+      color: var(--text-secondary);
+      margin-bottom: 20px;
+      line-height: 1.5;
+      font-weight: 400;
+    }
+
+    .file-upload-wrapper {
+      position: relative;
+      overflow: hidden;
+      display: inline-block;
+      width: 100%;
+      margin-bottom: 6px;
+    }
+
+    .file-upload-wrapper input[type="file"] {
+      position: absolute;
+      left: 0;
+      top: 0;
+      opacity: 0;
+      width: 100%;
+      height: 100%;
+      cursor: pointer;
+      z-index: 2;
+    }
+
+    .file-upload-label {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 12px 16px;
+      border-radius: 16px;
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      letter-spacing: 0.01em;
+      cursor: pointer;
+    }
+
+    .file-upload-label:hover {
+      border-color: var(--accent);
+      color: var(--text-primary);
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .file-upload-label svg {
+      width: 20px;
+      height: 20px;
+      stroke: var(--accent);
+      fill: none;
+      stroke-width: 1.5;
+      flex-shrink: 0;
+    }
+
+    #file-name {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      margin-left: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 160px;
+      display: inline-block;
+      vertical-align: middle;
+    }
+
+    button {
+      background: transparent;
+      color: var(--accent);
+      border: 1px solid var(--accent);
+      padding: 12px 22px;
+      border-radius: 40px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+      transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+      width: 100%;
+      margin-top: 14px;
+      backdrop-filter: blur(4px);
+      text-transform: uppercase;
+    }
+
+    button:hover:not(:disabled) {
+      background: var(--accent);
+      color: #0a0a0a;
+      border-color: var(--accent);
+      box-shadow: 0 8px 24px rgba(199, 168, 107, 0.25);
+      transform: translateY(-1px);
+    }
+
+    button:active:not(:disabled) {
+      transform: translateY(0);
+      box-shadow: 0 4px 12px rgba(199, 168, 107, 0.3);
+    }
+
+    button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      border-color: rgba(255, 255, 255, 0.2);
+      color: rgba(255, 255, 255, 0.4);
+    }
+
+    #status {
+      font-size: 0.75rem;
+      margin-top: 18px;
+      min-height: 20px;
+      color: var(--success);
+      font-weight: 400;
+      letter-spacing: 0.01em;
+      transition: color 0.3s;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    #status.error {
+      color: var(--error);
+    }
+
+    #status::before {
+      content: '';
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+      opacity: 0.7;
+      margin-right: 4px;
+    }
+
+    #canvas-container {
+      width: 100vw;
+      height: 100vh;
+      position: fixed;
+      top: 0;
+      left: 0;
+      z-index: 1;
+    }
+
+    #hint {
+      position: absolute;
+      bottom: 22px;
+      left: 24px;
+      font-size: 0.7rem;
+      color: rgba(255, 255, 255, 0.3);
+      z-index: 15;
+      letter-spacing: 0.04em;
+      font-weight: 400;
+      pointer-events: none;
+      backdrop-filter: blur(4px);
+      padding: 4px 10px;
+      border-radius: 20px;
+      background: rgba(0, 0, 0, 0.3);
+      border: 0.5px solid rgba(255, 255, 255, 0.05);
+    }
+
+    /* subtle grain overlay for premium texture */
+    body::after {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 5;
+      opacity: 0.03;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+      background-repeat: repeat;
+      background-size: 256px 256px;
+    }
+  </style>
+  <!-- Import Inter font for premium typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300..600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="ui-panel">
+    <h1>DEPTHWIZARD</h1>
+    <p>Upload a photo — depth estimated and rendered as an interactive 3D point cloud. Drag to orbit, scroll to zoom.</p>
+    
+    <div class="file-upload-wrapper">
+      <input type="file" id="file-input" accept="image/*" />
+      <label for="file-input" class="file-upload-label">
+        <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+          <polyline points="17 8 12 3 7 8" />
+          <line x1="12" y1="3" x2="12" y2="15" />
+        </svg>
+        <span>Choose Image</span>
+      </label>
+    </div>
+    <span id="file-name"></span>
+    
+    <button id="generate-btn">Generate 3D View</button>
+    <div id="status"></div>
+  </div>
+
+  <div id="canvas-container"></div>
+  <div id="hint">◈ LEFT-DRAG ROTATE &nbsp;|&nbsp; SCROLL ZOOM &nbsp;|&nbsp; RIGHT-DRAG PAN</div>
+
+  <!-- Three.js core and OrbitControls (minimal CDN) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+  <script>
+    (function() {
+      // Backend endpoint
+      const BACKEND_URL = "http://localhost:8000/predict";
+
+      // --- Scene setup with premium dark aesthetic ---
+      const container = document.getElementById("canvas-container");
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x030303);
+      
+      // subtle fog for depth atmosphere
+      scene.fog = new THREE.Fog(0x030303, 200, 800);
+
+      const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1500);
+      camera.position.set(0, 20, 180);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      container.appendChild(renderer.domElement);
+
+      // OrbitControls with premium smoothness
+      const controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.06;
+      controls.rotateSpeed = 0.6;
+      controls.zoomSpeed = 1.0;
+      controls.panSpeed = 0.5;
+      controls.target.set(0, 0, 0);
+      controls.update();
+
+      // Minimal ambient light (not strictly needed for vertex colors, but adds subtle base if material changes)
+      scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+
+      let currentPointCloud = null;
+
+      function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+      }
+      animate();
+
+      window.addEventListener("resize", () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      // --- Build point cloud from backend response ---
+      function buildPointCloud(data) {
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(data.count * 3);
+        const colors = new Float32Array(data.count * 3);
+
+        for (let i = 0; i < data.count; i++) {
+          const [x, y, z] = data.points[i];
+          positions[i * 3] = x;
+          positions[i * 3 + 1] = y;
+          positions[i * 3 + 2] = z;
+
+          const [r, g, b] = data.colors[i];
+          colors[i * 3] = r / 255;
+          colors[i * 3 + 1] = g / 255;
+          colors[i * 3 + 2] = b / 255;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+        // Premium point size and rounded appearance
+        const material = new THREE.PointsMaterial({
+          size: 0.9,
+          vertexColors: true,
+          sizeAttenuation: true,
+          blending: THREE.AdditiveBlending, // gives a subtle glow — premium feel
+          depthWrite: false,
+          transparent: true,
+        });
+
+        return new THREE.Points(geometry, material);
+      }
+
+      function displayPointCloud(data) {
+        if (currentPointCloud) {
+          scene.remove(currentPointCloud);
+          currentPointCloud.geometry.dispose();
+          currentPointCloud.material.dispose();
+        }
+
+        const cloud = buildPointCloud(data);
+        scene.add(cloud);
+        currentPointCloud = cloud;
+
+        // Smoothly reset camera framing
+        camera.position.set(0, 20, 180);
+        controls.target.set(0, 0, 0);
+        controls.update();
+      }
+
+      // --- UI elements and interactions ---
+      const fileInput = document.getElementById("file-input");
+      const generateBtn = document.getElementById("generate-btn");
+      const statusEl = document.getElementById("status");
+      const fileNameSpan = document.getElementById("file-name");
+
+      function setStatus(message, isError = false) {
+        statusEl.textContent = message;
+        statusEl.className = isError ? 'error' : '';
+      }
+
+      // Update filename display
+      fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+          fileNameSpan.textContent = e.target.files[0].name;
+        } else {
+          fileNameSpan.textContent = '';
+        }
+      });
+
+      generateBtn.addEventListener("click", async () => {
+        const file = fileInput.files[0];
+        if (!file) {
+          setStatus("Please choose an image first.", true);
+          return;
+        }
+
+        generateBtn.disabled = true;
+        setStatus("Estimating depth...");
+
+        try {
+          const formData = new FormData();
+          formData.append("file", file);
+
+          const response = await fetch(BACKEND_URL, {
+            method: "POST",
+            body: formData,
+          });
+
+          if (!response.ok) {
+            const errBody = await response.json().catch(() => ({}));
+            throw new Error(errBody.detail || `Server error ${response.status}`);
+          }
+
+          const data = await response.json();
+          displayPointCloud(data);
+          setStatus(`Rendered ${data.count.toLocaleString()} points`);
+        } catch (err) {
+          console.error(err);
+          setStatus(`${err.message}. Is backend running?`, true);
+        } finally {
+          generateBtn.disabled = false;
+        }
+      });
+
+      // Initial status message
+      setStatus('Ready');
+    })();
+  </script>
+</body>
+</html>
