@@ -1,0 +1,20 @@
+# --- Core web server ---
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+python-multipart==0.0.9      # needed for FastAPI file uploads
+
+# --- Image handling ---
+Pillow==10.4.0
+numpy==1.26.4
+opencv-python==4.10.0.84
+
+# --- Depth model (Depth Anything V2) ---
+# transformers gives us easy access to the pretrained Depth Anything V2
+# checkpoints on Hugging Face without manually wiring up the original repo.
+torch==2.4.1
+torchvision==0.19.1
+transformers==4.44.2
+accelerate==0.34.2           # speeds up model loading
+
+# --- Utility ---
+requests==2.32.3
