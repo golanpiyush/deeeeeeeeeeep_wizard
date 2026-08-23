@@ -33,7 +33,7 @@ import os
 # ---------------------------------------------------------------------------
 # <<< CHANGE THIS LINE TO SWITCH MODELS >>>
 # ---------------------------------------------------------------------------
-ACTIVE_MODEL = "large"   # "small" | "base" | "large"
+ACTIVE_MODEL = "small"   # "small" | "base" | "large"
 
 # ---------------------------------------------------------------------------
 # Colorama Setup (cross-platform colored terminal output)
