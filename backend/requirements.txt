@@ -1,20 +1,27 @@
-# --- Core web server ---
-fastapi==0.115.0
-uvicorn[standard]==0.30.6
-python-multipart==0.0.9      # needed for FastAPI file uploads
 
-# --- Image handling ---
-Pillow==10.4.0
-numpy==1.26.4
-opencv-python==4.10.0.84
+
+
+fastapi
+uvicorn
+pillow
+numpy
+opencv-python
+python-multipart
+websockets
 
 # --- Depth model (Depth Anything V2) ---
 # transformers gives us easy access to the pretrained Depth Anything V2
 # checkpoints on Hugging Face without manually wiring up the original repo.
-torch==2.4.1
-torchvision==0.19.1
-transformers==4.44.2
-accelerate==0.34.2           # speeds up model loading
+torch==2.7.1
+torchvision==0.22.1
+transformers==4.46.3
+accelerate==1.1.1 # speeds mdoel loading
 
 # --- Utility ---
 requests==2.32.3
+
+# torch and torchvision are installed separately by runfirst.py, which
+# auto-detects your GPU and picks the matching CUDA index. If installing
+# manually instead:
+#   pip install torch==2.7.1 torchvision==0.22.1 --index-url https://download.pytorch.org/whl/cu128
+# (or the /cpu index if you have no NVIDIA GPU)

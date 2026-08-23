@@ -1,29 +1,31 @@
 <!DOCTYPE html>
-<!-- DepthWizard frontend — single file, minimal black premium aesthetic -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>DepthWizard — 3D Point Cloud</title>
   <style>
-    /* Minimal black premium styling with refined animations and typography */
     :root {
       --bg: #030303;
-      --panel-bg: rgba(10, 10, 10, 0.75);
+      --panel-bg: rgba(10, 10, 10, 0.72);
       --panel-border: rgba(255, 255, 255, 0.08);
       --text-primary: #f5f5f7;
       --text-secondary: #98989d;
-      --accent: #c7a86b; /* refined gold for premium feel */
+      --accent: #c7a86b;
       --accent-hover: #d9bc7a;
       --error: #ff5a5a;
       --success: #5ad08c;
+      --term-bg: rgba(4, 6, 4, 0.92);
+      --term-green: #5cf27a;
+      --term-dim: #3a7a45;
+      --term-yellow: #e8d36a;
+      --term-red: #ff6b6b;
+      --glass-bg: rgba(10, 10, 10, 0.7);
+      --glass-border: rgba(255, 255, 255, 0.1);
+      --lunar-blue: #7ec8ff;
     }
 
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
 
     body {
       background: var(--bg);
@@ -35,61 +37,120 @@
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
       letter-spacing: -0.01em;
+      touch-action: none;
+      position: fixed;
+      inset: 0;
     }
 
-    /* Smooth fade-in for UI panel */
     @keyframes panelFade {
-      0% { opacity: 0; transform: translateY(8px); }
-      100% { opacity: 1; transform: translateY(0); }
+      0% { opacity: 0; transform: translateY(12px) scale(0.98); }
+      100% { opacity: 1; transform: translateY(0) scale(1); }
     }
 
     #ui-panel {
       position: absolute;
-      top: 24px;
-      left: 24px;
-      z-index: 20;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 30;
+      width: min(92vw, 340px);
       background: var(--panel-bg);
       backdrop-filter: blur(24px) saturate(180%);
       -webkit-backdrop-filter: blur(24px) saturate(180%);
-      padding: 28px 28px 24px;
-      border-radius: 24px;
-      max-width: 340px;
+      padding: 24px 22px 20px;
+      border-radius: 28px;
       border: 1px solid var(--panel-border);
-      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6), 0 0 0 0.5px rgba(255, 255, 255, 0.03) inset;
+      box-shadow: 0 24px 48px rgba(0, 0, 0, 0.7), 0 0 0 0.5px rgba(255, 255, 255, 0.03) inset;
       animation: panelFade 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-      transition: box-shadow 0.4s ease, border-color 0.3s;
+      transition: box-shadow 0.3s ease, border-color 0.3s, opacity 0.25s ease, transform 0.25s ease;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      max-height: 90vh;
+      overflow-y: auto;
+      pointer-events: auto;
     }
 
-    #ui-panel:hover {
-      border-color: rgba(255, 255, 255, 0.15);
-      box-shadow: 0 24px 48px rgba(0, 0, 0, 0.8), 0 0 0 0.5px rgba(255, 255, 255, 0.06) inset;
+    /* When Lunar Measure mode is active, the center upload/generate panel
+       collapses out of the way -- it doesn't apply to that mode (measuring
+       happens directly on the already-loaded image) and was cluttering the
+       view in the middle of the screen. */
+    #ui-panel.collapsed {
+      opacity: 0;
+      pointer-events: none;
+      transform: translate(-50%, -50%) scale(0.96);
     }
 
     #ui-panel h1 {
-      font-size: 1.5rem;
+      font-size: 1.8rem;
       font-weight: 400;
-      margin-bottom: 6px;
-      letter-spacing: -0.02em;
+      margin-bottom: 10px;
+      letter-spacing: 0.03em;
       color: var(--text-primary);
       display: flex;
       align-items: center;
-      gap: 8px;
+      justify-content: center;
+      gap: 10px;
+      width: 100%;
     }
 
     #ui-panel h1::after {
       content: '';
-      flex: 1;
+      flex: 0 1 60px;
       height: 1px;
-      background: linear-gradient(90deg, rgba(255,255,255,0.15), transparent);
+      background: linear-gradient(90deg, rgba(255,255,255,0.2), transparent);
       margin-left: 12px;
     }
 
     #ui-panel p {
-      font-size: 0.78rem;
+      font-size: 0.8rem;
       color: var(--text-secondary);
-      margin-bottom: 20px;
-      line-height: 1.5;
+      margin-bottom: 18px;
+      line-height: 1.4;
       font-weight: 400;
+      max-width: 260px;
+      text-align: center;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* MODE TOGGLE                                                        */
+    /* ------------------------------------------------------------------ */
+    #mode-toggle {
+      display: flex;
+      width: 100%;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 40px;
+      padding: 4px;
+      margin-bottom: 16px;
+      gap: 4px;
+    }
+
+    #mode-toggle button {
+      all: unset;
+      flex: 1;
+      text-align: center;
+      padding: 9px 8px;
+      border-radius: 30px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.25s ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    #mode-toggle button.active {
+      background: var(--accent);
+      color: #0a0a0a;
+    }
+
+    #mode-toggle button.active.lunar-active {
+      background: var(--lunar-blue);
+      color: #04101a;
     }
 
     .file-upload-wrapper {
@@ -97,7 +158,7 @@
       overflow: hidden;
       display: inline-block;
       width: 100%;
-      margin-bottom: 6px;
+      margin-bottom: 10px;
     }
 
     .file-upload-wrapper input[type="file"] {
@@ -108,28 +169,31 @@
       width: 100%;
       height: 100%;
       cursor: pointer;
-      z-index: 2;
+      z-index: 3;
     }
 
     .file-upload-label {
       display: flex;
       align-items: center;
-      gap: 12px;
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      padding: 12px 16px;
-      border-radius: 16px;
-      font-size: 0.85rem;
+      justify-content: center;
+      gap: 10px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      padding: 14px 16px;
+      border-radius: 40px;
+      font-size: 0.9rem;
       color: var(--text-secondary);
       transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
       letter-spacing: 0.01em;
       cursor: pointer;
+      width: 100%;
+      font-weight: 500;
     }
 
     .file-upload-label:hover {
       border-color: var(--accent);
       color: var(--text-primary);
-      background: rgba(255, 255, 255, 0.05);
+      background: rgba(255, 255, 255, 0.06);
     }
 
     .file-upload-label svg {
@@ -144,43 +208,45 @@
     #file-name {
       font-size: 0.75rem;
       color: var(--text-secondary);
-      margin-left: 4px;
+      margin: 4px 0 0;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      max-width: 160px;
-      display: inline-block;
-      vertical-align: middle;
+      max-width: 180px;
+      display: block;
+      text-align: center;
     }
 
     button {
       background: transparent;
       color: var(--accent);
       border: 1px solid var(--accent);
-      padding: 12px 22px;
+      padding: 14px 20px;
       border-radius: 40px;
       cursor: pointer;
       font-size: 0.85rem;
-      font-weight: 500;
-      letter-spacing: 0.02em;
+      font-weight: 600;
+      letter-spacing: 0.05em;
       transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
       width: 100%;
-      margin-top: 14px;
+      margin-top: 12px;
       backdrop-filter: blur(4px);
       text-transform: uppercase;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
     }
 
     button:hover:not(:disabled) {
       background: var(--accent);
       color: #0a0a0a;
       border-color: var(--accent);
-      box-shadow: 0 8px 24px rgba(199, 168, 107, 0.25);
+      box-shadow: 0 8px 24px rgba(199, 168, 107, 0.35);
       transform: translateY(-1px);
     }
 
     button:active:not(:disabled) {
-      transform: translateY(0);
-      box-shadow: 0 4px 12px rgba(199, 168, 107, 0.3);
+      transform: scale(0.98);
+      box-shadow: 0 4px 12px rgba(199, 168, 107, 0.5);
     }
 
     button:disabled {
@@ -190,22 +256,51 @@
       color: rgba(255, 255, 255, 0.4);
     }
 
+    #terminal-toggle-btn {
+      background: rgba(92, 242, 122, 0.06);
+      border-color: var(--term-green);
+      color: var(--term-green);
+      margin-top: 10px;
+      font-family: 'SF Mono', 'Consolas', monospace;
+      font-size: 0.7rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      letter-spacing: 0.06em;
+    }
+
+    #terminal-toggle-btn:hover:not(:disabled) {
+      background: var(--term-green);
+      color: #041005;
+      box-shadow: 0 8px 24px rgba(92, 242, 122, 0.3);
+    }
+
+    #terminal-toggle-btn .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+      display: inline-block;
+    }
+
     #status {
-      font-size: 0.75rem;
-      margin-top: 18px;
-      min-height: 20px;
+      font-size: 0.8rem;
+      margin-top: 16px;
+      min-height: 22px;
       color: var(--success);
-      font-weight: 400;
+      font-weight: 500;
       letter-spacing: 0.01em;
       transition: color 0.3s;
       display: flex;
       align-items: center;
+      justify-content: center;
       gap: 6px;
+      width: 100%;
+      text-align: center;
     }
 
-    #status.error {
-      color: var(--error);
-    }
+    #status.error { color: var(--error); }
 
     #status::before {
       content: '';
@@ -214,8 +309,7 @@
       height: 6px;
       border-radius: 50%;
       background: currentColor;
-      opacity: 0.7;
-      margin-right: 4px;
+      opacity: 0.8;
     }
 
     #canvas-container {
@@ -225,26 +319,30 @@
       top: 0;
       left: 0;
       z-index: 1;
+      touch-action: none;
     }
 
     #hint {
       position: absolute;
-      bottom: 22px;
-      left: 24px;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
       font-size: 0.7rem;
-      color: rgba(255, 255, 255, 0.3);
+      color: rgba(255, 255, 255, 0.45);
       z-index: 15;
-      letter-spacing: 0.04em;
+      letter-spacing: 0.05em;
       font-weight: 400;
       pointer-events: none;
       backdrop-filter: blur(4px);
-      padding: 4px 10px;
-      border-radius: 20px;
-      background: rgba(0, 0, 0, 0.3);
-      border: 0.5px solid rgba(255, 255, 255, 0.05);
+      padding: 6px 16px;
+      border-radius: 30px;
+      background: rgba(0, 0, 0, 0.5);
+      border: 0.5px solid rgba(255, 255, 255, 0.1);
+      text-align: center;
+      white-space: nowrap;
+      transition: opacity 0.2s ease;
     }
 
-    /* subtle grain overlay for premium texture */
     body::after {
       content: '';
       position: fixed;
@@ -259,17 +357,471 @@
       background-repeat: repeat;
       background-size: 256px 256px;
     }
+
+    /* ------------------------------------------------------------------ */
+    /* LIVE TERMINAL PANEL — mobile friendly, centered bottom sheet style   */
+    /* ------------------------------------------------------------------ */
+    #terminal-panel {
+      position: fixed;
+      left: 50%;
+      bottom: 20px;
+      transform: translateX(-50%);
+      width: min(94vw, 560px);
+      height: 42vh;
+      min-height: 200px;
+      max-height: 70vh;
+      z-index: 40;
+      background: var(--term-bg);
+      border: 1px solid rgba(92, 242, 122, 0.3);
+      border-radius: 20px;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.8), 0 0 0 1px rgba(92,242,122,0.08) inset, 0 0 40px rgba(92, 242, 122, 0.15);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      font-family: 'SF Mono', 'Consolas', 'Courier New', monospace;
+      transition: opacity 0.25s ease, transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      resize: none; /* mobile friendly: no manual resize; fixed height */
+      pointer-events: auto;
+      touch-action: pan-y; 
+    }
+
+    #terminal-panel.hidden {
+      opacity: 0;
+      pointer-events: none;
+      transform: translateX(-50%) translateY(30px) scale(0.98);
+    }
+
+    #terminal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      background: rgba(255,255,255,0.04);
+      border-bottom: 1px solid rgba(92, 242, 122, 0.2);
+      cursor: default;
+      user-select: none;
+      flex-shrink: 0;
+    }
+
+    #terminal-header .title {
+      font-size: 0.75rem;
+      color: var(--term-green);
+      letter-spacing: 0.06em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    #terminal-header .title .pulse {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--term-green);
+      box-shadow: 0 0 6px var(--term-green);
+      animation: pulseGlow 1.4s ease-in-out infinite;
+    }
+
+    #terminal-header .title .pulse.idle {
+      background: rgba(92,242,122,0.3);
+      box-shadow: none;
+      animation: none;
+    }
+
+    @keyframes pulseGlow {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    #terminal-header .controls {
+      display: flex;
+      gap: 8px;
+    }
+
+    #terminal-header button.term-btn {
+      all: unset;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      cursor: pointer;
+      opacity: 0.9;
+      transition: opacity 0.2s, transform 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+    }
+
+    #terminal-header button.term-btn:active { transform: scale(0.85); }
+    .term-btn.close { background: #ff5f56; color: #000; font-weight: bold; }
+    .term-btn.min { background: #ffbd2e; color: #000; font-weight: bold; }
+
+    #terminal-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 14px;
+      font-size: 0.7rem;
+      line-height: 1.5;
+      color: var(--term-green);
+      scrollbar-width: thin;
+      scrollbar-color: var(--term-dim) transparent;
+      -webkit-overflow-scrolling: touch;
+      touch-action: pan-y;
+    }
+
+    #terminal-body::-webkit-scrollbar { width: 4px; }
+    #terminal-body::-webkit-scrollbar-thumb { background: var(--term-dim); border-radius: 4px; }
+
+    .term-line {
+      white-space: pre-wrap;
+      word-break: break-word;
+      opacity: 0;
+      animation: termLineIn 0.18s ease forwards;
+      margin-bottom: 2px;
+    }
+
+    @keyframes termLineIn {
+      from { opacity: 0; transform: translateX(-4px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+
+    .term-line .ts {
+      color: var(--term-dim);
+      margin-right: 6px;
+    }
+
+    .term-line.type-error { color: var(--term-red); }
+    .term-line.type-warn { color: var(--term-yellow); }
+    .term-line.type-model_load, .term-line.type-model_ready { color: #7ec8ff; }
+    .term-line.type-result, .term-line.type-pointcloud_done { color: var(--term-yellow); font-weight: 600; }
+    .term-line.type-pointcloud_chunk { color: var(--term-green); }
+
+    #terminal-progress-wrap {
+      padding: 8px 14px 10px;
+      flex-shrink: 0;
+      background: rgba(0,0,0,0.3);
+    }
+
+    #terminal-progress-bar-bg {
+      width: 100%;
+      height: 5px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 5px;
+      overflow: hidden;
+    }
+
+    #terminal-progress-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--term-dim), var(--term-green));
+      transition: width 0.2s ease;
+      box-shadow: 0 0 8px rgba(92,242,122,0.6);
+    }
+
+    /* mobile hint for terminal swipe */
+    #terminal-swipe-hint {
+      font-size: 0.6rem;
+      text-align: center;
+      color: rgba(92,242,122,0.4);
+      padding: 2px 0 4px;
+      letter-spacing: 0.04em;
+    }
+
+    /* arrows for mobile navigation (optional visual) */
+    .mobile-nav-arrows {
+      position: fixed;
+      bottom: 130px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 20;
+      display: flex;
+      gap: 24px;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+    }
+    .mobile-arrow {
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.15);
+      backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 28px;
+      pointer-events: auto;
+      transition: all 0.2s;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+    }
+    .mobile-arrow:active {
+      background: rgba(255,255,255,0.15);
+      transform: scale(0.9);
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* LUNAR MEASURE MODE                                                 */
+    /* ------------------------------------------------------------------ */
+    #lunar-container {
+      position: fixed;
+      inset: 0;
+      z-index: 2;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg);
+      overflow: auto;
+      touch-action: pan-x pan-y pinch-zoom;
+    }
+
+    #lunar-container.active {
+      display: flex;
+    }
+
+    #lunar-image-wrap {
+      position: relative;
+      max-width: 100%;
+      max-height: 100%;
+      line-height: 0;
+    }
+
+    #lunar-image {
+      max-width: 100%;
+      max-height: 100vh;
+      display: block;
+      cursor: crosshair;
+      -webkit-user-drag: none;
+      user-select: none;
+    }
+
+    #lunar-svg-overlay {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      width: 100%;
+      height: 100%;
+    }
+
+    .lunar-point {
+      fill: var(--lunar-blue);
+      stroke: #04101a;
+      stroke-width: 1.5;
+    }
+
+    .lunar-point.shadow-tip {
+      fill: var(--term-yellow);
+    }
+
+    .lunar-line {
+      stroke: var(--lunar-blue);
+      stroke-width: 2;
+      stroke-dasharray: 6 4;
+    }
+
+    #lunar-empty-state {
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+      text-align: center;
+      max-width: 280px;
+      line-height: 1.5;
+    }
+
+    #lunar-panel {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 35;
+      width: min(92vw, 380px);
+      background: var(--panel-bg);
+      backdrop-filter: blur(24px) saturate(180%);
+      -webkit-backdrop-filter: blur(24px) saturate(180%);
+      border: 1px solid rgba(126, 200, 255, 0.25);
+      border-radius: 22px;
+      padding: 16px 18px;
+      display: none;
+      flex-direction: column;
+      gap: 10px;
+      box-shadow: 0 24px 48px rgba(0, 0, 0, 0.7);
+    }
+
+    #lunar-panel.active {
+      display: flex;
+    }
+
+    #lunar-panel h2 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--lunar-blue);
+      letter-spacing: 0.02em;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    #lunar-panel h2 .step-badge {
+      font-size: 0.65rem;
+      background: rgba(126, 200, 255, 0.15);
+      color: var(--lunar-blue);
+      padding: 3px 9px;
+      border-radius: 20px;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+
+    #lunar-instructions {
+      font-size: 0.78rem;
+      color: var(--text-secondary);
+      line-height: 1.45;
+    }
+
+    .lunar-field-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .lunar-field {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .lunar-field label {
+      font-size: 0.65rem;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .lunar-field input {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 10px;
+      color: var(--text-primary);
+      font-size: 0.8rem;
+      padding: 8px 10px;
+      font-family: inherit;
+      width: 100%;
+    }
+
+    .lunar-field input:focus {
+      outline: none;
+      border-color: var(--lunar-blue);
+    }
+
+    #lunar-file-label {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background: rgba(126, 200, 255, 0.08);
+      border: 1px solid rgba(126, 200, 255, 0.3);
+      color: var(--lunar-blue);
+      padding: 11px 14px;
+      border-radius: 40px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+      letter-spacing: 0.02em;
+    }
+
+    #lunar-file-label input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+    }
+
+    #lunar-reset-btn {
+      background: transparent;
+      border: 1px solid rgba(255,255,255,0.15);
+      color: var(--text-secondary);
+      font-size: 0.7rem;
+      padding: 9px 14px;
+      margin-top: 0;
+    }
+
+    #lunar-reset-btn:hover:not(:disabled) {
+      background: rgba(255,255,255,0.06);
+      color: var(--text-primary);
+      border-color: rgba(255,255,255,0.25);
+      box-shadow: none;
+      transform: none;
+    }
+
+    #lunar-result {
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+      background: rgba(126, 200, 255, 0.06);
+      border: 1px solid rgba(126, 200, 255, 0.2);
+      border-radius: 14px;
+      padding: 12px 14px;
+      margin-top: 2px;
+    }
+
+    #lunar-result.active {
+      display: flex;
+    }
+
+    #lunar-result .height-value {
+      font-size: 1.6rem;
+      font-weight: 300;
+      color: var(--lunar-blue);
+      letter-spacing: 0.01em;
+    }
+
+    #lunar-result .height-value .unc {
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      font-weight: 400;
+    }
+
+    #lunar-result .meta-row {
+      font-size: 0.68rem;
+      color: var(--text-secondary);
+      display: flex;
+      justify-content: space-between;
+    }
+
+    #lunar-result .reliability-warning {
+      font-size: 0.7rem;
+      color: var(--term-yellow);
+      line-height: 1.4;
+      background: rgba(232, 211, 106, 0.08);
+      border: 1px solid rgba(232, 211, 106, 0.25);
+      border-radius: 10px;
+      padding: 8px 10px;
+      margin-top: 2px;
+    }
+
+    @media (max-width: 600px) {
+      #ui-panel { padding: 20px 16px; }
+      #ui-panel h1 { font-size: 1.6rem; }
+      #terminal-panel { height: 38vh; }
+      #lunar-panel { top: 12px; padding: 14px 15px; }
+    }
   </style>
-  <!-- Import Inter font for premium typography -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300..600&display=swap" rel="stylesheet">
 </head>
 <body>
+  <!-- Centered UI Panel (3D View mode) -->
   <div id="ui-panel">
     <h1>DEPTHWIZARD</h1>
-    <p>Upload a photo — depth estimated and rendered as an interactive 3D point cloud. Drag to orbit, scroll to zoom.</p>
-    
+    <p>Upload a photo — depth estimated & rendered as interactive 3D. Drag / pinch to orbit & zoom.</p>
+
+    <div id="mode-toggle">
+      <button id="mode-btn-3d" class="active">3D View</button>
+      <button id="mode-btn-lunar">Lunar Measure</button>
+    </div>
+
     <div class="file-upload-wrapper">
       <input type="file" id="file-input" accept="image/*" />
       <label for="file-input" class="file-upload-label">
@@ -282,29 +834,142 @@
       </label>
     </div>
     <span id="file-name"></span>
-    
+
     <button id="generate-btn">Generate 3D View</button>
+    <button id="terminal-toggle-btn"><span class="dot"></span> LIVE TERMINAL: HIDE</button>
     <div id="status"></div>
   </div>
 
   <div id="canvas-container"></div>
-  <div id="hint">◈ LEFT-DRAG ROTATE &nbsp;|&nbsp; SCROLL ZOOM &nbsp;|&nbsp; RIGHT-DRAG PAN</div>
+  <div id="hint">&#9670; DRAG ROTATE &nbsp;|&nbsp; PINCH ZOOM &nbsp;|&nbsp; TWO-FINGER PAN</div>
 
-  <!-- Three.js core and OrbitControls (minimal CDN) -->
+  <!-- Mobile arrow controls (visible on touch devices, 3D mode only) -->
+  <div class="mobile-nav-arrows" id="mobile-arrows">
+    <div class="mobile-arrow" id="arrow-left">←</div>
+    <div class="mobile-arrow" id="arrow-right">→</div>
+    <div class="mobile-arrow" id="arrow-up">↑</div>
+    <div class="mobile-arrow" id="arrow-down">↓</div>
+  </div>
+
+  <!-- Live terminal panel (3D mode only) -->
+  <div id="terminal-panel" class="hidden">
+    <div id="terminal-header">
+      <div class="title"><span class="pulse idle" id="terminal-pulse"></span> LIVE COMPUTE</div>
+      <div class="controls">
+        <button class="term-btn min" id="term-clear" title="Clear">×</button>
+        <button class="term-btn close" id="term-close" title="Hide">–</button>
+      </div>
+    </div>
+    <div id="terminal-body"></div>
+    <div id="terminal-progress-wrap">
+      <div id="terminal-progress-bar-bg"><div id="terminal-progress-bar-fill"></div></div>
+      <div id="terminal-swipe-hint">scroll to view log</div>
+    </div>
+  </div>
+
+  <!-- LUNAR MEASURE MODE -->
+  <div id="lunar-container">
+    <div id="lunar-empty-state">No image loaded yet.<br>Choose a lunar image below to start measuring.</div>
+    <div id="lunar-image-wrap" style="display:none;">
+      <img id="lunar-image" draggable="false" />
+      <svg id="lunar-svg-overlay"></svg>
+    </div>
+  </div>
+
+  <div id="lunar-panel">
+    <h2>Lunar Shadow Height <span class="step-badge" id="lunar-step-badge">Step 1 / 2</span></h2>
+    <p id="lunar-instructions">Click the top of a crater rim or ridge, then click the tip of its cast shadow.</p>
+
+    <label id="lunar-file-label">
+      Choose Lunar Image
+      <input type="file" id="lunar-file-input" accept="image/*" />
+    </label>
+    <span id="lunar-file-name" style="font-size:0.72rem; color:var(--text-secondary); text-align:center;"></span>
+
+    <div class="lunar-field-row">
+      <div class="lunar-field">
+        <label for="lunar-sun-elevation">Sun Elevation (deg)</label>
+        <input type="number" id="lunar-sun-elevation" step="0.01" value="10.0" />
+      </div>
+      <div class="lunar-field">
+        <label for="lunar-pixel-res">Pixel Res (m/px)</label>
+        <input type="number" id="lunar-pixel-res" step="0.001" value="0.24" />
+      </div>
+    </div>
+
+    <button id="lunar-reset-btn">Reset Points</button>
+
+    <div id="lunar-result">
+      <div class="height-value"><span id="lunar-height-val">—</span> m <span class="unc" id="lunar-height-unc"></span></div>
+      <div class="meta-row"><span>Shadow length</span><span id="lunar-shadow-len">—</span></div>
+      <div class="meta-row"><span>Sun elevation used</span><span id="lunar-sun-used">—</span></div>
+      <div class="reliability-warning" id="lunar-warning" style="display:none;"></div>
+    </div>
+  </div>
+
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 
   <script>
     (function() {
-      // Backend endpoint
-      const BACKEND_URL = "http://localhost:8000/predict";
+      const BACKEND_HOST = "escape-rear-learn-communities.trycloudflare.com";
+      const WS_URL = `wss://${BACKEND_HOST}/ws/predict`;
+      const HTTP_BASE = `https://${BACKEND_HOST}`;
 
-      // --- Scene setup with premium dark aesthetic ---
-      const container = document.getElementById("canvas-container");
+      // ------------------------------------------------------------------
+      // MODE TOGGLE
+      // ------------------------------------------------------------------
+      const uiPanel = document.getElementById("ui-panel");
+      const canvasContainer = document.getElementById("canvas-container");
+      const hint = document.getElementById("hint");
+      const mobileArrows = document.getElementById("mobile-arrows");
+      const terminalPanelEl = document.getElementById("terminal-panel");
+      const terminalToggleBtnEl = document.getElementById("terminal-toggle-btn");
+      const generateBtnEl = document.getElementById("generate-btn");
+      const fileUploadWrapperEl = document.querySelector(".file-upload-wrapper");
+      const fileNameEl3D = document.getElementById("file-name");
+
+      const modeBtn3D = document.getElementById("mode-btn-3d");
+      const modeBtnLunar = document.getElementById("mode-btn-lunar");
+      const lunarContainer = document.getElementById("lunar-container");
+      const lunarPanel = document.getElementById("lunar-panel");
+
+      let currentMode = "3d";
+
+      function setMode(mode) {
+        currentMode = mode;
+        const is3D = mode === "3d";
+
+        modeBtn3D.classList.toggle("active", is3D);
+        modeBtnLunar.classList.toggle("active", !is3D);
+        modeBtnLunar.classList.toggle("lunar-active", !is3D);
+
+        // Hide the center upload/generate panel entirely in lunar mode --
+        // it doesn't apply there (measuring happens on an already-loaded
+        // image via the top lunar panel instead).
+        uiPanel.classList.toggle("collapsed", !is3D);
+
+        canvasContainer.style.display = is3D ? "block" : "none";
+        hint.style.display = is3D ? "block" : "none";
+        mobileArrows.style.display = is3D ? "flex" : "none";
+        lunarContainer.classList.toggle("active", !is3D);
+        lunarPanel.classList.toggle("active", !is3D);
+
+        if (is3D) {
+          setTerminalVisible(terminalWasVisibleBeforeLunar);
+        } else {
+          terminalWasVisibleBeforeLunar = terminalVisible;
+          setTerminalVisible(false);
+        }
+      }
+
+      modeBtn3D.addEventListener("click", () => setMode("3d"));
+      modeBtnLunar.addEventListener("click", () => setMode("lunar"));
+
+      // --- Scene setup ---
+      const container = canvasContainer;
       const scene = new THREE.Scene();
       scene.background = new THREE.Color(0x030303);
-      
-      // subtle fog for depth atmosphere
       scene.fog = new THREE.Fog(0x030303, 200, 800);
 
       const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1500);
@@ -315,17 +980,48 @@
       renderer.setSize(window.innerWidth, window.innerHeight);
       container.appendChild(renderer.domElement);
 
-      // OrbitControls with premium smoothness
       const controls = new THREE.OrbitControls(camera, renderer.domElement);
       controls.enableDamping = true;
       controls.dampingFactor = 0.06;
-      controls.rotateSpeed = 0.6;
+      controls.rotateSpeed = 0.8;
       controls.zoomSpeed = 1.0;
-      controls.panSpeed = 0.5;
+      controls.panSpeed = 0.7;
       controls.target.set(0, 0, 0);
+      controls.enableTouchRotate = true;
+      controls.enableTouchZoom = true;
+      controls.enableTouchPan = true;
+      controls.touchRotate = true;
+      controls.touchZoom = true;
+      controls.touchPan = true;
       controls.update();
 
-      // Minimal ambient light (not strictly needed for vertex colors, but adds subtle base if material changes)
+      // Mobile arrow controls integration
+      const arrowLeft = document.getElementById('arrow-left');
+      const arrowRight = document.getElementById('arrow-right');
+      const arrowUp = document.getElementById('arrow-up');
+      const arrowDown = document.getElementById('arrow-down');
+
+      function rotateCamera(deltaTheta, deltaPhi) {
+        const offset = camera.position.clone().sub(controls.target);
+        const radius = offset.length();
+        let theta = Math.atan2(offset.x, offset.z);
+        let phi = Math.acos(Math.max(-1, Math.min(1, offset.y / radius)));
+
+        theta += deltaTheta;
+        phi = Math.max(0.1, Math.min(Math.PI - 0.1, phi + deltaPhi));
+
+        const x = radius * Math.sin(phi) * Math.sin(theta);
+        const y = radius * Math.cos(phi);
+        const z = radius * Math.sin(phi) * Math.cos(theta);
+        camera.position.set(controls.target.x + x, controls.target.y + y, controls.target.z + z);
+        controls.update();
+      }
+
+      arrowLeft.addEventListener('click', () => rotateCamera(0.15, 0));
+      arrowRight.addEventListener('click', () => rotateCamera(-0.15, 0));
+      arrowUp.addEventListener('click', () => rotateCamera(0, 0.1));
+      arrowDown.addEventListener('click', () => rotateCamera(0, -0.1));
+
       scene.add(new THREE.AmbientLight(0xffffff, 0.6));
 
       let currentPointCloud = null;
@@ -343,7 +1039,6 @@
         renderer.setSize(window.innerWidth, window.innerHeight);
       });
 
-      // --- Build point cloud from backend response ---
       function buildPointCloud(data) {
         const geometry = new THREE.BufferGeometry();
         const positions = new Float32Array(data.count * 3);
@@ -364,12 +1059,11 @@
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
-        // Premium point size and rounded appearance
         const material = new THREE.PointsMaterial({
           size: 0.9,
           vertexColors: true,
           sizeAttenuation: true,
-          blending: THREE.AdditiveBlending, // gives a subtle glow — premium feel
+          blending: THREE.AdditiveBlending,
           depthWrite: false,
           transparent: true,
         });
@@ -388,31 +1082,89 @@
         scene.add(cloud);
         currentPointCloud = cloud;
 
-        // Smoothly reset camera framing
         camera.position.set(0, 20, 180);
         controls.target.set(0, 0, 0);
         controls.update();
       }
 
-      // --- UI elements and interactions ---
+      // ------------------------------------------------------------------
+      // LIVE TERMINAL PANEL LOGIC
+      // ------------------------------------------------------------------
+      const terminalPanel = terminalPanelEl;
+      const terminalBody = document.getElementById("terminal-body");
+      const terminalToggleBtn = terminalToggleBtnEl;
+      const terminalClose = document.getElementById("term-close");
+      const terminalClear = document.getElementById("term-clear");
+      const terminalPulse = document.getElementById("terminal-pulse");
+      const progressFill = document.getElementById("terminal-progress-bar-fill");
+
+      let terminalVisible = false;
+      let terminalWasVisibleBeforeLunar = false;
+
+      function setTerminalVisible(visible) {
+        terminalVisible = visible;
+        terminalPanel.classList.toggle("hidden", !visible);
+        terminalToggleBtn.innerHTML = visible
+          ? '<span class="dot"></span> LIVE TERMINAL: HIDE'
+          : '<span class="dot"></span> LIVE TERMINAL: SHOW';
+      }
+
+      terminalToggleBtn.addEventListener("click", () => setTerminalVisible(!terminalVisible));
+      terminalClose.addEventListener("click", () => setTerminalVisible(false));
+      terminalClear.addEventListener("click", () => { terminalBody.innerHTML = ""; });
+
+      function setPulseActive(active) {
+        terminalPulse.classList.toggle("idle", !active);
+      }
+
+      function termLog(type, message) {
+        const now = new Date();
+        const ts = now.toTimeString().split(" ")[0] + "." + String(now.getMilliseconds()).padStart(3, "0");
+        const line = document.createElement("div");
+        line.className = `term-line type-${type}`;
+        const prefix = {
+          model_load: "[MODEL]", model_ready: "[MODEL]", inference_start: "[INFER]",
+          inference_done: "[INFER]", pointcloud_start: "[CLOUD]", pointcloud_step: "[CLOUD]",
+          pointcloud_chunk: "[CLOUD]", pointcloud_done: "[CLOUD]", resize: "[PREP]",
+          mode: "[MODE]", result: "[DONE]", error: "[ERROR]",
+        }[type] || "[LOG]";
+        line.innerHTML = `<span class="ts">${ts}</span>${prefix} ${message}`;
+        terminalBody.appendChild(line);
+        terminalBody.scrollTop = terminalBody.scrollHeight;
+        while (terminalBody.children.length > 400) {
+          terminalBody.removeChild(terminalBody.firstChild);
+        }
+      }
+
+      function setProgress(percent) {
+        progressFill.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+      }
+
+      // ------------------------------------------------------------------
+      // UI elements + WebSocket-driven prediction flow (3D mode)
+      // ------------------------------------------------------------------
       const fileInput = document.getElementById("file-input");
-      const generateBtn = document.getElementById("generate-btn");
+      const generateBtn = generateBtnEl;
       const statusEl = document.getElementById("status");
-      const fileNameSpan = document.getElementById("file-name");
+      const fileNameSpan = fileNameEl3D;
 
       function setStatus(message, isError = false) {
         statusEl.textContent = message;
         statusEl.className = isError ? 'error' : '';
       }
 
-      // Update filename display
       fileInput.addEventListener('change', (e) => {
-        if (e.target.files.length > 0) {
-          fileNameSpan.textContent = e.target.files[0].name;
-        } else {
-          fileNameSpan.textContent = '';
-        }
+        fileNameSpan.textContent = e.target.files.length > 0 ? e.target.files[0].name : '';
       });
+
+      function fileToBase64(file) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result.split(",")[1]);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+      }
 
       generateBtn.addEventListener("click", async () => {
         const file = fileInput.files[0];
@@ -422,35 +1174,232 @@
         }
 
         generateBtn.disabled = true;
-        setStatus("Estimating depth...");
+        setStatus("Connecting...");
+        setProgress(0);
+        setPulseActive(true);
+        if (!terminalVisible) setTerminalVisible(true);
+        termLog("mode", `Starting job — ${file.name} (${(file.size/1024).toFixed(1)} KB)`);
 
         try {
-          const formData = new FormData();
-          formData.append("file", file);
+          const b64 = await fileToBase64(file);
+          const ws = new WebSocket(WS_URL);
 
-          const response = await fetch(BACKEND_URL, {
-            method: "POST",
-            body: formData,
+          await new Promise((resolve, reject) => {
+            ws.onopen = () => {
+              termLog("mode", "WebSocket connected.");
+              ws.send(JSON.stringify({ image_b64: b64 }));
+              resolve();
+            };
+            ws.onerror = (err) => reject(new Error("WebSocket connection failed."));
           });
 
-          if (!response.ok) {
-            const errBody = await response.json().catch(() => ({}));
-            throw new Error(errBody.detail || `Server error ${response.status}`);
-          }
+          setStatus("Processing ...");
 
-          const data = await response.json();
-          displayPointCloud(data);
-          setStatus(`Rendered ${data.count.toLocaleString()} points`);
+          await new Promise((resolve, reject) => {
+            ws.onmessage = (evt) => {
+              const data = JSON.parse(evt.data);
+              if (data.type === "result") {
+                termLog("result", `Complete — ${data.count.toLocaleString()} points rendered.`);
+                setProgress(100);
+                displayPointCloud(data);
+                setStatus(`Rendered ${data.count.toLocaleString()} points`);
+                setPulseActive(false);
+                resolve();
+                return;
+              }
+              if (data.type === "error") {
+                termLog("error", data.message);
+                reject(new Error(data.message));
+                return;
+              }
+              termLog(data.type, data.message || '');
+              if (typeof data.progress_percent === "number") setProgress(data.progress_percent);
+            };
+            ws.onclose = () => { };
+          });
         } catch (err) {
           console.error(err);
-          setStatus(`${err.message}. Is backend running?`, true);
+          termLog("error", err.message);
+          setStatus(`${err.message} — backend?`, true);
+          setPulseActive(false);
         } finally {
           generateBtn.disabled = false;
         }
       });
 
-      // Initial status message
       setStatus('Ready');
+      termLog("mode", "DepthWizard ready. Awaiting image...");
+
+      // ------------------------------------------------------------------
+      // LUNAR MEASURE MODE
+      // ------------------------------------------------------------------
+      const lunarFileInput = document.getElementById("lunar-file-input");
+      const lunarFileName = document.getElementById("lunar-file-name");
+      const lunarImageWrap = document.getElementById("lunar-image-wrap");
+      const lunarImage = document.getElementById("lunar-image");
+      const lunarEmptyState = document.getElementById("lunar-empty-state");
+      const lunarSvg = document.getElementById("lunar-svg-overlay");
+      const lunarStepBadge = document.getElementById("lunar-step-badge");
+      const lunarInstructions = document.getElementById("lunar-instructions");
+      const lunarResetBtn = document.getElementById("lunar-reset-btn");
+      const lunarSunElevationInput = document.getElementById("lunar-sun-elevation");
+      const lunarPixelResInput = document.getElementById("lunar-pixel-res");
+      const lunarResultEl = document.getElementById("lunar-result");
+      const lunarHeightVal = document.getElementById("lunar-height-val");
+      const lunarHeightUnc = document.getElementById("lunar-height-unc");
+      const lunarShadowLen = document.getElementById("lunar-shadow-len");
+      const lunarSunUsed = document.getElementById("lunar-sun-used");
+      const lunarWarning = document.getElementById("lunar-warning");
+
+      // Points stored in NATURAL (original pixel) image coordinates, so
+      // the math sent to the backend always uses real pixel distances
+      // regardless of how the image is scaled/displayed on screen.
+      let lunarPoints = []; // [{x, y}, ...] up to 2 entries
+      let lunarNaturalWidth = 0;
+      let lunarNaturalHeight = 0;
+
+      lunarFileInput.addEventListener("change", (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        lunarFileName.textContent = file.name;
+        const url = URL.createObjectURL(file);
+        lunarImage.onload = () => {
+          lunarNaturalWidth = lunarImage.naturalWidth;
+          lunarNaturalHeight = lunarImage.naturalHeight;
+          lunarEmptyState.style.display = "none";
+          lunarImageWrap.style.display = "block";
+          resetLunarPoints();
+        };
+        lunarImage.src = url;
+      });
+
+      function displayToNaturalCoords(clientX, clientY) {
+        const rect = lunarImage.getBoundingClientRect();
+        const relX = (clientX - rect.left) / rect.width;
+        const relY = (clientY - rect.top) / rect.height;
+        return {
+          x: relX * lunarNaturalWidth,
+          y: relY * lunarNaturalHeight,
+          // also return relative (0-1) for placing SVG markers, which
+          // scale automatically with the displayed image size:
+          relX, relY,
+        };
+      }
+
+      function addSvgMarker(relX, relY, isShadowTip) {
+        const ns = "http://www.w3.org/2000/svg";
+        const circle = document.createElementNS(ns, "circle");
+        circle.setAttribute("cx", `${relX * 100}%`);
+        circle.setAttribute("cy", `${relY * 100}%`);
+        circle.setAttribute("r", "6");
+        circle.setAttribute("class", `lunar-point${isShadowTip ? " shadow-tip" : ""}`);
+        lunarSvg.appendChild(circle);
+      }
+
+      function drawLine() {
+        if (lunarPoints.length !== 2) return;
+        const ns = "http://www.w3.org/2000/svg";
+        const line = document.createElementNS(ns, "line");
+        line.setAttribute("x1", `${lunarPoints[0].relX * 100}%`);
+        line.setAttribute("y1", `${lunarPoints[0].relY * 100}%`);
+        line.setAttribute("x2", `${lunarPoints[1].relX * 100}%`);
+        line.setAttribute("y2", `${lunarPoints[1].relY * 100}%`);
+        line.setAttribute("class", "lunar-line");
+        lunarSvg.appendChild(line);
+      }
+
+      function updateLunarStep() {
+        if (lunarPoints.length === 0) {
+          lunarStepBadge.textContent = "Step 1 / 2";
+          lunarInstructions.textContent = "Click the top of a crater rim or ridge (the feature whose height you want).";
+        } else if (lunarPoints.length === 1) {
+          lunarStepBadge.textContent = "Step 2 / 2";
+          lunarInstructions.textContent = "Now click the tip of that feature's cast shadow.";
+        } else {
+          lunarStepBadge.textContent = "Done";
+          lunarInstructions.textContent = "Measurement complete. Reset to measure another feature.";
+        }
+      }
+
+      function resetLunarPoints() {
+        lunarPoints = [];
+        lunarSvg.innerHTML = "";
+        lunarResultEl.classList.remove("active");
+        lunarWarning.style.display = "none";
+        updateLunarStep();
+      }
+
+      lunarResetBtn.addEventListener("click", resetLunarPoints);
+
+      lunarImage.addEventListener("click", async (e) => {
+        if (lunarPoints.length >= 2) return; // require explicit reset before re-measuring
+        const coords = displayToNaturalCoords(e.clientX, e.clientY);
+        const isShadowTip = lunarPoints.length === 1;
+        lunarPoints.push(coords);
+        addSvgMarker(coords.relX, coords.relY, isShadowTip);
+        updateLunarStep();
+
+        if (lunarPoints.length === 2) {
+          drawLine();
+          await runHeightMeasurement();
+        }
+      });
+
+      async function runHeightMeasurement() {
+        const sunElevation = parseFloat(lunarSunElevationInput.value);
+        const pixelRes = parseFloat(lunarPixelResInput.value);
+
+        if (Number.isNaN(sunElevation) || Number.isNaN(pixelRes)) {
+          lunarWarning.textContent = "Enter valid Sun Elevation and Pixel Resolution values before measuring.";
+          lunarWarning.style.display = "block";
+          lunarResultEl.classList.add("active");
+          return;
+        }
+
+        const [top, tip] = lunarPoints;
+
+        try {
+          const res = await fetch(`${HTTP_BASE}/measure_height`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              feature_top_px: [top.x, top.y],
+              shadow_tip_px: [tip.x, tip.y],
+              sun_elevation_deg: sunElevation,
+              pixel_resolution_m: pixelRes,
+            }),
+          });
+
+          if (!res.ok) {
+            throw new Error(`Server returned ${res.status}`);
+          }
+
+          const data = await res.json();
+          lunarResultEl.classList.add("active");
+
+          if (Number.isNaN(data.height_m)) {
+            lunarHeightVal.textContent = "N/A";
+            lunarHeightUnc.textContent = "";
+          } else {
+            lunarHeightVal.textContent = data.height_m.toFixed(1);
+            lunarHeightUnc.textContent = `± ${data.height_uncertainty_m.toFixed(1)} m`;
+          }
+          lunarShadowLen.textContent = `${data.shadow_length_m.toFixed(1)} m (${data.shadow_length_px.toFixed(0)} px)`;
+          lunarSunUsed.textContent = `${data.sun_elevation_deg.toFixed(2)}°`;
+
+          if (data.warning) {
+            lunarWarning.textContent = data.warning;
+            lunarWarning.style.display = "block";
+          } else {
+            lunarWarning.style.display = "none";
+          }
+        } catch (err) {
+          console.error(err);
+          lunarResultEl.classList.add("active");
+          lunarWarning.textContent = `Measurement failed: ${err.message}. Check the backend is reachable.`;
+          lunarWarning.style.display = "block";
+        }
+      }
     })();
   </script>
 </body>

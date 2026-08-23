@@ -5,10 +5,11 @@ A CPU-only, NO-DOWNLOAD, NO-TORCH-REQUIRED fake depth estimator.
 
 Why this file exists:
     The real depth model (Depth Anything V2, via depth_model.py) needs
-    torch + transformers installed and downloads ~100-400MB of weights on
-    first run. That's fine on your laptop, but it means you can't quickly
+    torch + transformers installed and downloads model weights on first
+    run. That's fine on your laptop, but it means you can't quickly
     sanity-check the REST of the pipeline (point cloud generation, the
-    FastAPI server, the Three.js viewer) without waiting on that setup.
+    FastAPI server, the Three.js viewer, the live terminal view) without
+    waiting on that setup.
 
     This module fakes a depth map using classical image processing
     (grayscale intensity + a bit of blur) so you can verify the full
@@ -19,15 +20,24 @@ Why this file exists:
     "brighter pixels" as "closer" as a crude placeholder. Swap to
     depth_model.DepthEstimator for actual results. This file is a
     development/testing tool, not part of the final demo.
+
+V2 CHANGES:
+    - Now accepts a ProgressReporter so the live terminal view narrates
+      fake-depth mode too (useful for testing the terminal UI itself
+      without waiting on the real model to load).
 """
 
 from __future__ import annotations
 
+import time
+
 import numpy as np
 from PIL import Image, ImageFilter
 
+from progress_events import ProgressReporter, NULL_REPORTER
 
-def fake_depth_from_brightness(image: Image.Image) -> np.ndarray:
+
+def fake_depth_from_brightness(image: Image.Image, reporter: ProgressReporter = NULL_REPORTER) -> np.ndarray:
     """
     Produces a placeholder "depth map" using only PIL/numpy (no ML model,
     no GPU, no torch) so the rest of the pipeline can be tested immediately.
@@ -37,12 +47,27 @@ def fake_depth_from_brightness(image: Image.Image) -> np.ndarray:
     a real depth estimate — it's purely so we can move data through the
     pipeline before the real model is wired up.
     """
+    w, h = image.size
+    reporter.emit(
+        "inference_start",
+        f"[FAKE DEPTH MODE] Estimating depth for {w}x{h} image via brightness proxy...",
+        width=w, height=h, total_pixels=w * h, device="cpu (no model)",
+    )
+    t0 = time.time()
+
     gray = image.convert("L")  # grayscale
-    # A blur smooths out fine detail/noise so the fake "depth" looks like
-    # gentle rolling terrain instead of noisy static - just for a nicer
-    # placeholder visual while testing.
     blurred = gray.filter(ImageFilter.GaussianBlur(radius=4))
     depth_map = np.array(blurred).astype(np.float32)
+
+    elapsed = time.time() - t0
+    reporter.emit(
+        "inference_done",
+        f"[FAKE DEPTH MODE] Depth proxy computed in {elapsed:.3f}s "
+        f"(range {depth_map.min():.0f} - {depth_map.max():.0f}).",
+        inference_seconds=round(elapsed, 4),
+        depth_min=float(depth_map.min()),
+        depth_max=float(depth_map.max()),
+    )
     return depth_map
 
 
@@ -54,9 +79,6 @@ if __name__ == "__main__":
     out_dir = os.path.join(os.path.dirname(__file__), "..", "outputs")
     os.makedirs(out_dir, exist_ok=True)
 
-    # Build a simple synthetic "terrain-like" test image: a radial gradient
-    # (bright center fading to dark edges) plus some noise, so it has some
-    # visual structure to turn into a point cloud.
     size = 256
     yy, xx = np.mgrid[0:size, 0:size]
     cx, cy = size / 2, size / 2
@@ -65,8 +87,6 @@ if __name__ == "__main__":
     noise = np.random.default_rng(0).normal(0, 10, size=(size, size))
     synthetic = np.clip(gradient + noise, 0, 255).astype(np.uint8)
 
-    # Make it a 3-channel "image" (fake RGB from the grayscale gradient)
-    # so it round-trips correctly through the same code path as a real photo.
     rgb = np.stack([synthetic] * 3, axis=-1)
     test_image = Image.fromarray(rgb, mode="RGB")
     test_image.save(os.path.join(out_dir, "synthetic_test_input.png"))

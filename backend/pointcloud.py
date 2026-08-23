@@ -19,20 +19,39 @@ We downsample heavily (see `max_points`) because:
     much data to send over HTTP and too much for a browser to render smoothly.
   - A few tens of thousands of points already looks great and stays responsive
     even on modest hardware (important since judges' laptops vary).
+
+V2 CHANGES:
+  - The actual math is UNCHANGED (same coordinate system, same downsampling
+    strategy, same output shape) — this still produces identical point
+    clouds to V1.
+  - Point placement is now done in CHUNKS (not literally per-pixel — that
+    would be tens of thousands of WebSocket messages and would actually be
+    slower and would flood the frontend) so a ProgressReporter can emit
+    real, meaningful progress events as the cloud is built. Chunk count is
+    tuned to look genuinely "live" without spamming the connection.
 """
 
 from __future__ import annotations
 
+import time
+
 import numpy as np
 from PIL import Image
 
+from progress_events import ProgressReporter, NULL_REPORTER
+
+
+pts = 150_000 # 60_000 view points
 
 def image_and_depth_to_pointcloud(
     image: Image.Image,
     depth_map: np.ndarray,
-    max_points: int = 60_000,
+    max_points: int = pts, 
     depth_scale: float = 40.0,
     invert_depth: bool = False,
+    reporter: ProgressReporter = NULL_REPORTER,
+    progress_chunks: int = 24,
+    min_chunk_seconds: float = 0.05,
 ) -> dict:
     """
     Build a point cloud from a color image and its matching depth map.
@@ -44,27 +63,35 @@ def image_and_depth_to_pointcloud(
             has more pixels than this, to keep the payload small and the
             browser fast).
         depth_scale: multiplier controlling how "deep" the 3D effect looks.
-            Larger = more dramatic depth exaggeration. Tune this per-image;
-            there's no single correct value since depth is relative, not
-            metric.
-        invert_depth: some depth conventions treat higher values as "closer"
-            and others as "farther" — flip this if your scene looks
-            inside-out (like a photo negative in 3D) when first rendered.
+        invert_depth: flip depth direction if a scene looks inside-out.
+        reporter: ProgressReporter to emit live status to (no-op if omitted).
+        progress_chunks: how many progress events to emit while building
+            the point cloud. Higher = smoother-looking live view, but more
+            messages sent. 24 gives a nice steady terminal scroll without
+            being spammy.
+        min_chunk_seconds: real (wall-clock) pause inserted between each
+            chunk event, in seconds. Without this, chunking is pure array
+            slicing and all events fire within milliseconds — nothing
+            visibly animates in the browser even though many events were
+            sent. Default 0.05s (50ms) across ~24 chunks adds about 1.2s
+            total to a request — a worthwhile trade for it actually
+            looking live. Set to 0 to disable (fires instantly, old
+            behavior).
 
     Returns:
         A JSON-serializable dict:
             {
-                "points": [[x, y, z], ...],       # 3D positions
-                "colors": [[r, g, b], ...],        # 0-255 ints, same order as points
+                "points": [[x, y, z], ...],
+                "colors": [[r, g, b], ...],
                 "count": int
             }
-        Ready to be sent straight to the frontend as JSON and consumed by
-        Three.js's BufferGeometry.
     """
+    t_start = time.time()
+    reporter.emit("pointcloud_start", "Building 3D point cloud from depth map...")
+
     image_rgb = np.array(image.convert("RGB"))  # shape (H, W, 3), uint8
     h, w = depth_map.shape
 
-    # Sanity check: the depth map and image must line up pixel-for-pixel.
     if image_rgb.shape[:2] != (h, w):
         raise ValueError(
             f"Image size {image_rgb.shape[:2]} does not match depth map size {(h, w)}. "
@@ -72,6 +99,7 @@ def image_and_depth_to_pointcloud(
         )
 
     # --- Normalize depth to a sane 0-1 range before scaling ---
+    reporter.emit("pointcloud_step", f"Normalizing depth values across {h}x{w} = {h*w:,} pixels...")
     d = depth_map.astype(np.float32)
     d_min, d_max = d.min(), d.max()
     if d_max - d_min < 1e-6:
@@ -83,15 +111,13 @@ def image_and_depth_to_pointcloud(
         d_norm = 1.0 - d_norm
 
     # --- Build pixel coordinate grid ---
-    # We center x/y around 0 so the point cloud is centered at the origin,
-    # which makes camera framing in Three.js much easier.
+    reporter.emit("pointcloud_step", "Mapping pixel grid to 3D coordinate space...")
     ys, xs = np.mgrid[0:h, 0:w]
     xs = xs.astype(np.float32) - (w / 2.0)
     ys = (h / 2.0) - ys.astype(np.float32)  # flip y so "up" in image = up in 3D
 
     zs = d_norm * depth_scale
 
-    # --- Flatten everything into (N, 3) points and (N, 3) colors ---
     points = np.stack([xs.ravel(), ys.ravel(), zs.ravel()], axis=1)
     colors = image_rgb.reshape(-1, 3)
 
@@ -99,16 +125,67 @@ def image_and_depth_to_pointcloud(
 
     # --- Downsample if there are more pixels than max_points ---
     if total_pixels > max_points:
-        # Random uniform sampling keeps the overall shape/density of the
-        # scene intact while cutting point count down to something the
-        # browser can render at interactive frame rates.
-        rng = np.random.default_rng(seed=42)  # fixed seed = reproducible demo
+        reporter.emit(
+            "pointcloud_step",
+            f"Downsampling {total_pixels:,} pixels -> {max_points:,} points "
+            f"for smooth browser rendering...",
+            total_pixels=total_pixels, max_points=max_points,
+        )
+        rng = np.random.default_rng(seed=42)
         idx = rng.choice(total_pixels, size=max_points, replace=False)
         points = points[idx]
         colors = colors[idx]
 
+    n = points.shape[0]
+
+    # --- Emit chunked "live placement" progress events ---
+    # IMPORTANT: this actually sends each chunk's real point/color data
+    # (not just a log message) so the frontend can draw the point cloud
+    # INCREMENTALLY as it builds — that's what makes this genuinely live,
+    # rather than a text log that scrolls while the 3D view stays blank
+    # until the very end.
+    #
+    # A tiny real sleep is inserted between chunks. Without it, this loop
+    # is pure numpy array slicing and finishes in ~10 milliseconds total —
+    # every event fires in the same instant and the browser has no chance
+    # to paint between them, so nothing visibly animates even though the
+    # log has many lines. min_chunk_seconds gives each chunk a real,
+    # visible moment on screen. Tuned low enough to still feel fast for a
+    # demo, high enough to actually see points appearing over time.
+    chunk_size = max(1, n // progress_chunks)
+    for i in range(0, n, chunk_size):
+        end = min(i + chunk_size, n)
+        chunk_points = points[i:end]
+        chunk_colors = colors[i:end]
+        sample_point = points[i]
+        sample_color = colors[i]
+        percent = round((end / n) * 100, 1)
+        reporter.emit(
+            "pointcloud_chunk",
+            f"Placed points {i:,}-{end:,} of {n:,} "
+            f"({percent}%) | sample @ ({sample_point[0]:.1f}, {sample_point[1]:.1f}, "
+            f"{sample_point[2]:.1f}) rgb({sample_color[0]},{sample_color[1]},{sample_color[2]})",
+            progress_percent=percent,
+            points_done=end,
+            points_total=n,
+            sample_point=[round(float(c), 2) for c in sample_point],
+            sample_color=[int(c) for c in sample_color],
+            # The actual chunk data the frontend uses to draw incrementally:
+            chunk_points=chunk_points.round(3).tolist(),
+            chunk_colors=chunk_colors.tolist(),
+        )
+        if min_chunk_seconds > 0:
+            time.sleep(min_chunk_seconds)
+
+    elapsed = time.time() - t_start
+    reporter.emit(
+        "pointcloud_done",
+        f"Point cloud complete: {n:,} points in {elapsed:.2f}s.",
+        count=n, elapsed_seconds=round(elapsed, 3),
+    )
+
     return {
         "points": points.round(3).tolist(),
         "colors": colors.tolist(),
-        "count": int(points.shape[0]),
+        "count": int(n),
     }
