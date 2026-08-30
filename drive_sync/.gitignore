@@ -1,0 +1,9 @@
+# CRITICAL: never commit these -- credentials.json identifies your app,
+# token.json is your personal login session. Neither contains a plaintext
+# password, but neither belongs in a public (or even private) repo.
+credentials.json
+token.json
+
+# Downloaded files (can be large, e.g. 1.2GB .img files) -- don't bloat
+# the repo with data, only code.
+downloaded/

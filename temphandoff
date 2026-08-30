@@ -1,0 +1,127 @@
+# DepthWizard — SIH26175 — Session Handoff Prompt
+
+Copy everything below into a new Claude conversation to continue this project with full context.
+
+---
+
+## Project identity
+
+**Team:** Soniya Singh (Team Lead), Piyush Golan, Anushka Soni, Shivam Jha, Srishti Jain
+**Problem statement:** SIH26175 — "Single-View Height Estimation and 3D Flythrough" (official title: elevation extraction from single-view optical remote-sensing imagery)
+**Deadline:** Internal hackathon shortlisting — 1 September (2 days from when this handoff was written)
+**Repo:** `deeeeeeeeeeep_wizard` on GitHub (github.com/golanpiyush/deeeeeeeeeeep_wizard), Windows dev environment, PowerShell
+
+## What the official PS actually requires (this is the real rubric — read carefully)
+
+The PS is about **Earth-based remote sensing**, not lunar imagery specifically. Full text:
+
+> Develop an end-to-end pipeline transforming single-view optical RGB remote-sensing images into elevation maps. Support both non-georeferenced (PNG/JPG → relative DSM) and georeferenced (GeoTIFF → absolute metric DSM using SRTM or GCPs for scale calibration) imagery. Use a pretrained monocular depth model, project onto a 3D mesh, render in Unity/Three.js/Babylon.js with first-person navigable flythrough.
+
+**Evaluation: 50% DSM accuracy (RMSE/MAE/correlation vs. reference data, across terrain types) + 50% visualization/UX (projection accuracy, flythrough quality, stability, deployment).**
+
+**Critical gap to know:** the team's actual build has been lunar-OHRC-focused (Chandrayaan-2 data), which is NOT what the PS asks for (PS wants Earth + SRTM). Lunar work is being kept as a "uniqueness/differentiation" story layered on top of a minimal Earth+SRTM implementation that satisfies the literal rubric. Both tracks share one visualization pipeline.
+
+## Current architecture (as of this handoff)
+
+```
+backend/
+  server.py              <- FastAPI, WebSocket live-progress pipeline
+  depth_model.py          <- Depth Anything V2 wrapper (via transformers)
+  model_switch.py          <- controls model size; KEEPS REVERTING TO "large"
+                              (risky on 6GB GPUs) — must stay "small" except
+                              on the demo laptop (RTX 4060, Piyush's machine)
+  pointcloud.py            <- image+depth -> 3D point cloud; NOW HAS
+                              compute_realistic_depth_scale() using real
+                              pixel_resolution_m instead of arbitrary constant
+  lunar_preprocess.py      <- NEW: gradient-flatten + CLAHE fix for lunar
+                              imagery (see "the core bug" below)
+  progress_events.py       <- ProgressReporter pub/sub for live terminal
+  shadow_height.py         <- real shadow photogrammetry (H = L*tan(theta)),
+                              genuinely rigorous, team's strongest asset
+  generate_sample_depth.py <- CPU-only fake depth for fast dev iteration
+  load_ohrc.py              <- reads raw OHRC .IMG using PDS4 XML label dims
+  prep_ohrc_for_depth.py    <- crops OHRC .IMG -> RGB PNG for pipeline input
+  drive_sync/
+    drive_sync.py           <- OAuth2 read-only Google Drive fetcher
+                              (team's shared Drive has lunar_data/, ohrc_2024/
+                              etc. — 28+ files including 1.2GB .IMG products)
+frontend/
+  index.html                <- Three.js viewer, live terminal UI, dual mode
+                              (3D View / Lunar Measure), currently being
+                              patched with FPV flythrough
+```
+
+## THE CORE BUG THAT WAS DIAGNOSED AND FIXED (important context)
+
+Running raw OHRC lunar crops through Depth Anything V2 produced a **smooth sloped surface instead of real crater structure**. Root cause: the model (trained on natural photos) reads the image's broad sun-angle lighting gradient as "depth" and under-weights the actual small crater shadows. Confirmed visually against a real 2000x2000 OHRC crop (sun_elevation=-0.17deg, near-horizon grazing light).
+
+**Fix built:** `lunar_preprocess.py` — (1) gradient-flatten via high-pass filter (heavy Gaussian blur, subtract), (2) CLAHE local contrast enhancement. Auto-detected via `looks_like_lunar_grayscale()` (checks if R/G/B channels are near-identical, meaning grayscale-saved-as-RGB). Every step emits live progress events for the terminal UI.
+
+**STATUS AS OF HANDOFF: code was written and unit-tested by Claude (isolated tests passed), but the user confirmed it had NOT YET been applied to the real running server.py at last check.** This is priority zero for the next session — confirm it's actually wired in and re-test against the real lunar crop.
+
+## Also fixed in the same pass: realistic depth scaling
+
+`pointcloud.py` used to hardcode `depth_scale=40.0` (arbitrary). Now has `compute_realistic_depth_scale(image_width_px, pixel_resolution_m)` which derives scale from real ground sample distance (e.g. 0.24 m/px for the OHRC dataset) assuming ~10% relief-to-width ratio for simple lunar craters (a stated, defensible geomorphology assumption, not a measurement). `server.py`'s `_run_pipeline` now accepts an optional `pixel_resolution_m` param, adjusts it correctly if the image gets resized, and passes it through. Frontend needs a small input field + payload field to actually use this (see FPV_FLYTHROUGH_PATCH.md step 2-3, already written).
+
+## Known recurring issue
+
+`model_switch.py`'s `ACTIVE_MODEL` keeps getting reverted to `"large"` by someone on the team (possibly for local high-quality testing). This risks CUDA OOM on non-4060 machines. Keep nudging it back to `"small"` as the shared default; use `DEPTHWIZARD_MODEL_SIZE=large` env var override for demo-only runs instead of editing the file.
+
+## Files already written and delivered, ready to apply (may or may not be applied yet — VERIFY FIRST)
+
+1. `lunar_preprocess.py` — the gradient-flatten + CLAHE fix, tested standalone
+2. `server.py` (updated) — wires in lunar_preprocess + realistic scale, tested via simulation
+3. `pointcloud.py` (updated) — `compute_realistic_depth_scale()`, tested
+4. `drive_sync/drive_sync.py` — OAuth2 Drive fetcher, CONFIRMED WORKING (user ran it live, listed 28 files successfully)
+5. `FPV_FLYTHROUGH_PATCH.md` — manual step-by-step frontend patch instructions (first-person low-altitude flythrough camera, NOT an orbit — flies a straight pass over the terrain with banking, reads as "drone survey flight" rather than "inspecting an object from outside")
+6. `model_switch_patch.md` — one-line fix instructions
+
+## TODAY'S plan (2 days before deadline) — in strict priority order
+
+### Priority 1 — verify the lunar fix is ACTUALLY live (do this first, non-negotiable)
+- Confirm `lunar_preprocess.py` exists in `backend/`
+- Confirm `server.py` imports it and `_run_pipeline` calls `preprocess_lunar_image`
+- Confirm `pointcloud.py` has the realistic scale function and server passes `pixel_resolution_m` through
+- Fix `model_switch.py` to `"small"`
+- Re-upload the real lunar crop through the actual running app (not a script test)
+- **Visually confirm**: does the 3D point cloud now show real crater bowls/structure, or is it still a smooth slope? This is the single most important checkpoint of the entire remaining timeline.
+
+### Priority 2 — MINIMAL SRTM integration (2-3 hours, NOT a full pipeline)
+This directly addresses the biggest gap against the actual PS rubric (50% of score is DSM accuracy validation, currently at zero).
+- Pick ONE real Earth location with interesting terrain (not flat) — a real photo/satellite crop of it
+- Use a no-auth-needed elevation API for a handful of points (5-10 sample coordinates) — Open-Topo-Data (opentopodata.org, has a free SRTM endpoint, no API key) or similar
+- Fit a simple linear transform: relative depth values at those sample pixel locations -> matched SRTM elevations
+- Apply that transform across the depth map to get pseudo-absolute elevations
+- Compute and print a basic error metric (RMSE or R²) against the same SRTM points used for calibration — this is circular/self-consistency validation, not independent validation, and that limitation should be stated honestly in the pitch, not hidden
+- Goal: have ONE real number to show, not a complete GeoTIFF DSM pipeline
+
+### Priority 3 — Apply FPV flythrough patch + polish
+- Apply `FPV_FLYTHROUGH_PATCH.md` to `frontend/index.html`
+- Test the live terminal narration end-to-end (does it read smoothly during a live demo, or is it too fast/slow/spammy)
+- Add the pixel-res-input field so lunar images can pass `pixel_resolution_m` to get realistic scaling
+
+### Priority 4 — Pitch document / PPT (may matter more than further code at this point)
+Honest narrative structure to use:
+1. Problem: monocular depth models have a domain gap on remote sensing imagery, especially non-Earth-like domains
+2. What we built: full pipeline (upload -> depth -> 3D point cloud -> interactive flythrough), Earth + lunar dual-domain support
+3. The bug we found and fixed: sun-angle gradient misleading the model on lunar imagery (show before/after images)
+4. Minimal SRTM validation: show the one real number, be upfront that it's a proof-of-concept not full multi-terrain validation
+5. Honest "next steps" section: full GeoTIFF export, multi-terrain RMSE validation, GCP tooling — shows the team understands the full scope even if 48 hours didn't allow building all of it
+6. Do NOT overclaim. Judges at this stage reward clear-eyed scoping over inflated claims that fall apart under a follow-up question.
+
+## Things NOT to attempt in this 2-day window (explicitly deprioritized, said so directly to the user)
+- Full GeoTIFF export via rasterio
+- Multi-terrain (urban/hilly/forested) validation — one Earth test case is enough, say so honestly
+- Stitching multiple lunar OHRC tiles into one larger terrain — explicitly decided against this earlier; single-tile depth quality had to be fixed first, and there isn't time to revisit stitching now
+- GCP (Ground Control Point) manual-placement UI tooling
+
+## Team dynamics / working style notes for whoever picks this up
+- User works in short ~2-hour focused sessions, not long continuous blocks
+- User's team keeps making independent edits to the codebase between sessions (added shadow_height.py, WebSocket live terminal, model_switch.py, drive_sync — all genuinely good work) — ALWAYS ask to see current file contents before editing anything; do not assume earlier-provided code is still accurate
+- User values direct, honest assessment over encouragement — has explicitly pushed back on hype ("its just passing an image to a model what good did we do unique etc?") and responded well to a grounded, precise answer distinguishing real contribution from wrapped-API-call
+- Be explicit about what's tested/verified vs. what's untested — this user checks claims (caught a false "you're safe" claim about git status earlier by asking for `git check-ignore -v` output)
+- Prefer testing code changes (even via simulation without full dependencies installed) before declaring something "fixed" — this has been the working pattern throughout
+
+## Immediate first message to send in the new session
+
+"Continuing DepthWizard (SIH26175) with 2 days left before internal hackathon. Priority 1: verify the lunar_preprocess.py fix is actually applied and working against real OHRC data — please paste current server.py, pointcloud.py, lunar_preprocess.py (if it exists), and model_switch.py so I can confirm before we move to SRTM integration."

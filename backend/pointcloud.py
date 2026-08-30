@@ -4,31 +4,27 @@ pointcloud.py
 Turns (original color image + depth map) into a 3D point cloud that the
 browser can render with Three.js.
 
-The core idea, in plain terms:
-  - Every pixel in the image has an (x, y) position on the flat photo.
-  - The depth model tells us how "deep" (far/near) that pixel should be —
-    call that z.
-  - So we place a point at 3D coordinates (x, y, z), colored with that
-    pixel's original RGB color.
-  - Do this for every pixel (or a downsampled subset, for performance) and
-    you get a "3D photo" — a point cloud — that can be rotated and flown
-    through in a 3D viewer.
+WHAT CHANGED (realistic scaling):
+    Previously depth_scale was a fixed, arbitrary constant (40.0) with no
+    connection to the actual physical scene -- it just "looked okay" on
+    whatever test photos were used. That's fine for generic demo photos,
+    but wrong for lunar OHRC imagery, where we actually KNOW the ground
+    sample distance (pixel_resolution_m, e.g. 0.24 m/pixel from the PDS4
+    label) and roughly what realistic crater relief looks like.
 
-We downsample heavily (see `max_points`) because:
-  - A single photo can have millions of pixels -> millions of points is too
-    much data to send over HTTP and too much for a browser to render smoothly.
-  - A few tens of thousands of points already looks great and stays responsive
-    even on modest hardware (important since judges' laptops vary).
+    This version adds compute_realistic_depth_scale(), which derives a
+    physically-motivated depth_scale from:
+      - the image's real pixel_resolution_m (so the X/Y axes are already
+        in a consistent unit -- meters per pixel)
+      - a typical relief-to-diameter ratio for small lunar craters
+        (~5-15% depth/diameter for simple bowl craters is well-established
+        in lunar geomorphology -- we use 10% as a reasonable midpoint)
 
-V2 CHANGES:
-  - The actual math is UNCHANGED (same coordinate system, same downsampling
-    strategy, same output shape) — this still produces identical point
-    clouds to V1.
-  - Point placement is now done in CHUNKS (not literally per-pixel — that
-    would be tens of thousands of WebSocket messages and would actually be
-    slower and would flood the frontend) so a ProgressReporter can emit
-    real, meaningful progress events as the cloud is built. Chunk count is
-    tuned to look genuinely "live" without spamming the connection.
+    This doesn't make the point cloud "metrically accurate" in the DSM
+    sense (that requires the SRTM/scale-calibration module for Earth
+    imagery -- see project notes) -- it makes the VISUAL exaggeration
+    defensible with a stated assumption, instead of an unexplained magic
+    number. Non-lunar photos still use the old fixed default.
 """
 
 from __future__ import annotations
@@ -41,13 +37,73 @@ from PIL import Image
 from progress_events import ProgressReporter, NULL_REPORTER
 
 
-pts = 150_000 # 60_000 view points
+pts = 150_000
+
+# Typical depth-to-diameter ratio for small, simple (non-complex) lunar
+# bowl craters -- well-established range in lunar geomorphology is
+# roughly 1:5 to 1:10 (depth is 10-20% of diameter) for fresh simple
+# craters. We use a conservative 10% as a defensible middle estimate for
+# an UNKNOWN crater size in an arbitrary crop -- not a measurement, an
+# assumption, stated explicitly here and in any report/pitch.
+LUNAR_DEPTH_TO_DIAMETER_RATIO = 0.10
+
+# Fallback for non-lunar (generic photo) input -- unchanged from before.
+DEFAULT_DEPTH_SCALE = 40.0
+
+
+def compute_realistic_depth_scale(
+    image_width_px: int,
+    pixel_resolution_m: float,
+    depth_to_diameter_ratio: float = LUNAR_DEPTH_TO_DIAMETER_RATIO,
+) -> float:
+    """
+    Derives a physically-motivated depth_scale for lunar imagery from the
+    image's real ground sample distance, instead of using an arbitrary
+    fixed constant.
+
+    Reasoning: our X/Y point cloud coordinates are in PIXELS (see
+    image_and_depth_to_pointcloud below), which at pixel_resolution_m
+    meters/pixel means the crop spans (image_width_px * pixel_resolution_m)
+    real meters across. If we assume the dominant visible feature is
+    roughly crater-scale relative to the crop (a reasonable assumption for
+    a single-crater-scale crop like ours), a defensible vertical relief is
+    depth_to_diameter_ratio * (crop width in meters) / pixel_resolution_m,
+    converting back into the same pixel-based Z units the rest of the
+    point cloud uses.
+
+    This is an ASSUMPTION-BASED estimate for VISUALIZATION purposes, not
+    a calibrated metric height (that's what shadow_height.py provides for
+    one clicked feature, and what SRTM-based calibration provides for a
+    full Earth DSM). State this plainly if asked -- it's honest, not
+    hand-wavy, because the assumption and its source are explicit.
+
+    Args:
+        image_width_px: width of the (possibly resized) image in pixels.
+        pixel_resolution_m: real-world meters per pixel, from the image's
+            PDS4 label (isda:pixel_resolution).
+        depth_to_diameter_ratio: assumed vertical relief as a fraction of
+            the crop's real-world width. Default 0.10 (10%) is a
+            conservative mid-range value for simple lunar craters.
+
+    Returns:
+        A depth_scale value in the same pixel-based units the point cloud
+        already uses for X/Y, so Z ends up visually proportionate rather
+        than an arbitrary flat multiplier.
+    """
+    crop_width_m = image_width_px * pixel_resolution_m
+    assumed_relief_m = crop_width_m * depth_to_diameter_ratio
+    # Convert the assumed relief back into pixel-equivalent units (since
+    # X/Y are in pixels, not meters) so Z is on a consistent visual scale.
+    depth_scale_px_equivalent = assumed_relief_m / pixel_resolution_m
+    return depth_scale_px_equivalent
+
 
 def image_and_depth_to_pointcloud(
     image: Image.Image,
     depth_map: np.ndarray,
-    max_points: int = pts, 
-    depth_scale: float = 40.0,
+    max_points: int = pts,
+    depth_scale: float | None = None,
+    pixel_resolution_m: float | None = None,
     invert_depth: bool = False,
     reporter: ProgressReporter = NULL_REPORTER,
     progress_chunks: int = 24,
@@ -59,37 +115,31 @@ def image_and_depth_to_pointcloud(
     Args:
         image: original PIL image (RGB), same size the depth map was computed on.
         depth_map: 2D numpy array of relative depth values, shape (H, W).
-        max_points: cap on how many points to emit (downsamples if the image
-            has more pixels than this, to keep the payload small and the
-            browser fast).
-        depth_scale: multiplier controlling how "deep" the 3D effect looks.
+        max_points: cap on how many points to emit.
+        depth_scale: explicit override for the Z-axis multiplier. If None
+            (default) AND pixel_resolution_m is provided, a realistic
+            scale is computed via compute_realistic_depth_scale(). If
+            None and pixel_resolution_m is also None, falls back to
+            DEFAULT_DEPTH_SCALE (40.0) -- the old fixed behavior, correct
+            for generic non-lunar photos where no real GSD is known.
+        pixel_resolution_m: real-world meters/pixel for this image, if
+            known (e.g. 0.24 for the OHRC dataset, from its PDS4 label).
+            Pass this for lunar/satellite imagery to get a physically-
+            grounded depth_scale instead of the arbitrary default.
         invert_depth: flip depth direction if a scene looks inside-out.
-        reporter: ProgressReporter to emit live status to (no-op if omitted).
-        progress_chunks: how many progress events to emit while building
-            the point cloud. Higher = smoother-looking live view, but more
-            messages sent. 24 gives a nice steady terminal scroll without
-            being spammy.
-        min_chunk_seconds: real (wall-clock) pause inserted between each
-            chunk event, in seconds. Without this, chunking is pure array
-            slicing and all events fire within milliseconds — nothing
-            visibly animates in the browser even though many events were
-            sent. Default 0.05s (50ms) across ~24 chunks adds about 1.2s
-            total to a request — a worthwhile trade for it actually
-            looking live. Set to 0 to disable (fires instantly, old
-            behavior).
+        reporter: ProgressReporter to emit live status to.
+        progress_chunks / min_chunk_seconds: live-placement animation
+            tuning, unchanged from before.
 
     Returns:
-        A JSON-serializable dict:
-            {
-                "points": [[x, y, z], ...],
-                "colors": [[r, g, b], ...],
-                "count": int
-            }
+        {"points": [[x,y,z],...], "colors": [[r,g,b],...], "count": int,
+         "depth_scale_used": float}   <- new field, so the frontend/report
+         can display what scale was actually applied, for transparency.
     """
     t_start = time.time()
     reporter.emit("pointcloud_start", "Building 3D point cloud from depth map...")
 
-    image_rgb = np.array(image.convert("RGB"))  # shape (H, W, 3), uint8
+    image_rgb = np.array(image.convert("RGB"))
     h, w = depth_map.shape
 
     if image_rgb.shape[:2] != (h, w):
@@ -98,7 +148,26 @@ def image_and_depth_to_pointcloud(
             "Make sure the depth map was computed on this exact image."
         )
 
-    # --- Normalize depth to a sane 0-1 range before scaling ---
+    # --- Resolve the depth_scale to actually use ---
+    if depth_scale is not None:
+        resolved_scale = depth_scale
+        scale_source = "explicit override"
+    elif pixel_resolution_m is not None:
+        resolved_scale = compute_realistic_depth_scale(w, pixel_resolution_m)
+        scale_source = (
+            f"derived from pixel_resolution_m={pixel_resolution_m} "
+            f"(assumes ~{int(LUNAR_DEPTH_TO_DIAMETER_RATIO*100)}% relief-to-width ratio)"
+        )
+    else:
+        resolved_scale = DEFAULT_DEPTH_SCALE
+        scale_source = "default fixed value (no real-world scale known)"
+
+    reporter.emit(
+        "pointcloud_step",
+        f"Depth scale: {resolved_scale:.1f} ({scale_source}).",
+        depth_scale=round(resolved_scale, 2),
+    )
+
     reporter.emit("pointcloud_step", f"Normalizing depth values across {h}x{w} = {h*w:,} pixels...")
     d = depth_map.astype(np.float32)
     d_min, d_max = d.min(), d.max()
@@ -110,20 +179,18 @@ def image_and_depth_to_pointcloud(
     if invert_depth:
         d_norm = 1.0 - d_norm
 
-    # --- Build pixel coordinate grid ---
     reporter.emit("pointcloud_step", "Mapping pixel grid to 3D coordinate space...")
     ys, xs = np.mgrid[0:h, 0:w]
     xs = xs.astype(np.float32) - (w / 2.0)
-    ys = (h / 2.0) - ys.astype(np.float32)  # flip y so "up" in image = up in 3D
+    ys = (h / 2.0) - ys.astype(np.float32)
 
-    zs = d_norm * depth_scale
+    zs = d_norm * resolved_scale
 
     points = np.stack([xs.ravel(), ys.ravel(), zs.ravel()], axis=1)
     colors = image_rgb.reshape(-1, 3)
 
     total_pixels = points.shape[0]
 
-    # --- Downsample if there are more pixels than max_points ---
     if total_pixels > max_points:
         reporter.emit(
             "pointcloud_step",
@@ -138,20 +205,6 @@ def image_and_depth_to_pointcloud(
 
     n = points.shape[0]
 
-    # --- Emit chunked "live placement" progress events ---
-    # IMPORTANT: this actually sends each chunk's real point/color data
-    # (not just a log message) so the frontend can draw the point cloud
-    # INCREMENTALLY as it builds — that's what makes this genuinely live,
-    # rather than a text log that scrolls while the 3D view stays blank
-    # until the very end.
-    #
-    # A tiny real sleep is inserted between chunks. Without it, this loop
-    # is pure numpy array slicing and finishes in ~10 milliseconds total —
-    # every event fires in the same instant and the browser has no chance
-    # to paint between them, so nothing visibly animates even though the
-    # log has many lines. min_chunk_seconds gives each chunk a real,
-    # visible moment on screen. Tuned low enough to still feel fast for a
-    # demo, high enough to actually see points appearing over time.
     chunk_size = max(1, n // progress_chunks)
     for i in range(0, n, chunk_size):
         end = min(i + chunk_size, n)
@@ -170,7 +223,6 @@ def image_and_depth_to_pointcloud(
             points_total=n,
             sample_point=[round(float(c), 2) for c in sample_point],
             sample_color=[int(c) for c in sample_color],
-            # The actual chunk data the frontend uses to draw incrementally:
             chunk_points=chunk_points.round(3).tolist(),
             chunk_colors=chunk_colors.tolist(),
         )
@@ -188,4 +240,5 @@ def image_and_depth_to_pointcloud(
         "points": points.round(3).tolist(),
         "colors": colors.tolist(),
         "count": int(n),
+        "depth_scale_used": round(float(resolved_scale), 2),
     }

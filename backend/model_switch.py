@@ -1,7 +1,7 @@
 """
 model_switch.py
 =================
-ONE PLACE to change which Depth Anything V2 checkpoint the whole app uses.
+ONE PLACE to change which "Depth Anything V2" checkpoint the whole app uses.
 
 Why this file exists:
     Before, the model size was buried in an environment variable
@@ -33,7 +33,7 @@ import os
 # ---------------------------------------------------------------------------
 # <<< CHANGE THIS LINE TO SWITCH MODELS >>>
 # ---------------------------------------------------------------------------
-ACTIVE_MODEL = "small"   # "small" | "base" | "large"
+ACTIVE_MODEL = "large"   # "small" | "base" | "large"
 
 # ---------------------------------------------------------------------------
 # Colorama Setup (cross-platform colored terminal output)
